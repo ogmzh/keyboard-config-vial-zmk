@@ -1,0 +1,8 @@
+# Local state: folders on this computer and the serial numbers of your keyboards.
+settings.json
+# Keymap backups and .vil exports the app saves.
+exports/
+# Firmware builds the app downloads.
+firmware/
+node_modules/
+.DS_Store

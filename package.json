@@ -1,0 +1,13 @@
+{
+  "name": "keymap-bridge",
+  "version": "0.1.0",
+  "description": "One keymap for two keyboards: edit a ZMK keymap and send it to a ZMK board or a Vial (QMK) board.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/keymap.test.mjs test/vial.test.mjs test/connection.test.mjs"
+  },
+  "engines": { "node": ">=18" },
+  "license": "GPL-2.0-or-later"
+}

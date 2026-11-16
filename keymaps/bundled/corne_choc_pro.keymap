@@ -1,0 +1,270 @@
+/*
+ * Copyright (c) 2020 The ZMK Contributors
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
+#include <behaviors.dtsi>
+#include <dt-bindings/zmk/backlight.h>
+#include <dt-bindings/zmk/bt.h>
+#include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk/rgb.h>
+
+/ {
+    chosen { zmk,physical-layout = &default_layout; };
+};
+
+/ {
+    behaviors {
+        hmr: hmr {
+            compatible = "zmk,behavior-hold-tap";
+            label = "HMR";
+            bindings = <&kp>, <&kp>;
+
+            #binding-cells = <2>;
+            tapping-term-ms = <200>;
+            flavor = "tap-preferred";
+            hold-trigger-key-positions = <23 25 24 26>;
+            hold-trigger-on-release;
+            quick-tap-ms = <80>;
+            require-prior-idle-ms = <60>;
+        };
+
+        hml: hml {
+            compatible = "zmk,behavior-hold-tap";
+            label = "HML";
+            bindings = <&kp>, <&kp>;
+
+            #binding-cells = <2>;
+            tapping-term-ms = <200>;
+            hold-trigger-key-positions = <15 16 17 18>;
+            flavor = "tap-preferred";
+            hold-trigger-on-release;
+            quick-tap-ms = <80>;
+            require-prior-idle-ms = <60>;
+        };
+
+        sr_chj_mod_morph: sr_chj_mod_morph {
+            compatible = "zmk,behavior-mod-morph";
+            #binding-cells = <0>;
+            bindings = <&sr_chj>, <&sr_chj_uppercase>;
+
+            mods = <(MOD_LSFT|MOD_RSFT)>;
+        };
+
+        one_shot: one_shot {
+            compatible = "zmk,behavior-sticky-key";
+            label = "ONE_SHOT";
+            bindings = <&kp>;
+            #binding-cells = <1>;
+            quick-release;
+            release-after-ms = <800>;
+        };
+
+        layertap_holdpref: layertap_holdpref {
+            compatible = "zmk,behavior-hold-tap";
+            label = "LAYERTAP_HOLDPREF";
+            bindings = <&mo>, <&kp>;
+
+            #binding-cells = <2>;
+            tapping-term-ms = <170>;
+            retro-tap;
+        };
+
+        oneshot_or_tab: oneshot_or_tab {
+            compatible = "zmk,behavior-hold-tap";
+            label = "ONESHOT_OR_TAB";
+            bindings = <&kp>, <&one_shot>;
+
+            #binding-cells = <2>;
+            tapping-term-ms = <180>;
+            retro-tap;
+            flavor = "tap-preferred";
+        };
+    };
+
+    combos {
+        compatible = "zmk,combos";
+
+        bt_clear {
+            bindings = <&bt BT_CLR>;
+            key-positions = <41 19 22>;
+        };
+
+        bt_0 {
+            bindings = <&bt BT_SEL 0>;
+            key-positions = <41 19 15>;
+        };
+
+        combined {
+            bindings = <&mo 3>;
+            key-positions = <41 44>;
+        };
+
+        caps_word {
+            bindings = <&caps_word>;
+            key-positions = <22 19>;
+            layers = <0>;
+        };
+    };
+
+    macros {
+        sr_sh: sr_sh {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&kp LS(RA(NUMBER_6)) &kp S>;
+            label = "SR_SH";
+            wait-ms = <10>;
+        };
+
+        sr_dj: sr_dj {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&kp LS(RA(NUMBER_7)) &kp D>;
+            label = "SR_DJ";
+            wait-ms = <10>;
+        };
+
+        sr_chj: sr_chj {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&macro_tap>, <&kp RA(SQT)>, <&macro_tap>, <&kp C>;
+
+            label = "SR_CHJ";
+            wait-ms = <20>;
+        };
+
+        sr_ch: sr_ch {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&kp LS(RA(NUMBER_6)) &kp C>;
+            label = "SR_CH";
+            wait-ms = <10>;
+        };
+
+        sr_zh: sr_zh {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&kp LS(RA(NUMBER_6)) &kp Z>;
+            label = "SR_ZH";
+            wait-ms = <10>;
+        };
+
+        sr_chj_uppercase: sr_chj_uppercase {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings =
+                <&macro_release>,
+                <&kp LSHFT &kp RSHFT>,
+                <&macro_tap>,
+                <&kp RA(SQT)>,
+                <&macro_tap>,
+                <&kp LS(C)>;
+
+            label = "SR_CHJ_UPPERCASE";
+            wait-ms = <20>;
+        };
+
+        colon: colon {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&macro_tap>, <&kp LS(SEMICOLON)>;
+
+            label = "COLON";
+        };
+
+        tmux_vim: tmux_vim {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&macro_tap>, <&kp LC(A)>, <&macro_tap>, <&kp LBKT>;
+
+            label = "TMUX_VIM";
+        };
+
+        del_word: del_word {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&macro_tap>, <&kp LA(BACKSPACE)>;
+
+            label = "DEL_WORD";
+        };
+
+        tmux_next: tmux_next {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&macro_tap>, <&kp LC(A)>, <&macro_tap>, <&kp N>;
+
+            label = "TMUX_NEXT";
+        };
+
+        tmux_prev: tmux_prev {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings = <&macro_tap>, <&kp LC(A)>, <&macro_tap>, <&kp P>;
+
+            label = "TMUX_PREV";
+        };
+    };
+
+    keymap {
+        compatible = "zmk,keymap";
+
+        default_layer {
+            display-name = "OGM";
+
+            // --------------------------------------------------------------------------------
+            // |  TAB |  Q  |  W  |  E  |  R  |  T  |  MUTE |  PP   |  Y  |  U   |  I  |  O  |  P  | BSPC |
+            // | CTRL |  A  |  S  |  D  |  F  |  G  |  LALT |  RALT |  H  |  J   |  K  |  L  |  ;  |  '   |
+            // | SHFT |  Z  |  X  |  C  |  V  |  B  |               |  N  |  M   |  ,  |  .  |  /  | ESC  |
+            //                    | GUI | LWR | SPC |               | ENT | RSE  | ALT |
+
+            bindings = <
+&kp ESCAPE    &kp Q              &kp W                &kp E                       &kp R                     &kp T      &kp LS(LG(X))  &caps_word  &kp Y          &kp U                       &kp I             &kp O                 &kp P                  &kp KP_DIVIDE
+&kp CAPSLOCK  &hml LEFT_SHIFT A  &hml LEFT_CONTROL S  &hml LEFT_ALT D             &hml LEFT_COMMAND F       &kp G      &sk LSHIFT     &sk LSHIFT  &kp H          &hmr RIGHT_GUI J            &hmr RIGHT_ALT K  &hmr RIGHT_CONTROL L  &hmr RIGHT_SHIFT SEMI  &kp SINGLE_QUOTE
+&kp GRAVE     &kp Z              &kp X                &kp C                       &kp V                     &kp B                                 &kp N          &kp M                       &kp COMMA         &kp DOT               &colon                 &kp UNDER
+                                                      &oneshot_or_tab TAB LSHIFT  &layertap_holdpref 1 TAB  &kp SPACE                             &kp BACKSPACE  &layertap_holdpref 2 ENTER  &kp RSHIFT
+            >;
+
+            sensor-bindings = <&inc_dec_kp C_VOL_DN C_VOL_UP &inc_dec_kp PG_UP PG_DN &inc_dec_kp C_PREV C_NEXT &inc_dec_kp C_BRI_DN C_BRI_UP>;
+        };
+
+        lower_layer {
+            display-name = "LWR";
+
+            // -----------------------------------------------------------------------------------------
+            // |  TAB |  1  |  2  |  3  |  4  |  5    |  LCTRL | RCTRL |  6  |  7  |  8  |  9  |  0  | BSPC |
+            // | CTRL | BT1 | BT2 | BT3 | BT4 | BT5   |  LALT  | RALT  | LFT | DWN |  UP | RGT |     |      |
+            // | SHFT | BTCR| RGB | RST | BOOT| Unlock|        |       |     |     |     |     |     |      |
+            //                    | GUI |     | SPC   |        | ENT   |     | ALT |
+
+            bindings = <
+&kp ESCAPE  &kp EXCL                     &kp AT                  &kp HASH                   &kp DOLLAR                 &kp PERCENT      &none  &none  &kp AMPERSAND    &kp ASTERISK                &kp CARET                   &kp LESS_THAN                 &kp GREATER_THAN   &kp QUESTION
+&kp CAPS    &hml LEFT_SHIFT KP_NUMBER_1  &hml LCTRL KP_NUMBER_2  &hml LEFT_ALT KP_NUMBER_3  &hml LEFT_GUI KP_NUMBER_4  &kp KP_NUMBER_5  &none  &none  &kp KP_NUMBER_6  &hmr RIGHT_GUI KP_NUMBER_7  &hmr RIGHT_ALT KP_NUMBER_8  &hmr RIGHT_SHIFT KP_NUMBER_9  &kp KP_NUMBER_0    &kp DOUBLE_QUOTES
+&kp TILDE   &kp PIPE                     &kp BACKSLASH           &kp MINUS                  &kp PLUS                   &kp KP_EQUAL                   &kp LEFT_BRACE   &kp LEFT_BRACKET            &kp LEFT_PARENTHESIS        &kp RIGHT_PARENTHESIS         &kp RIGHT_BRACKET  &kp RIGHT_BRACE
+                                                                 &trans                     &trans                     &trans                         &trans           &trans                      &trans
+            >;
+        };
+
+        raised {
+            bindings = <
+&kp ESC       &trans             &trans             &sr_sh           &sr_dj           &sr_zh             &none   &none   &tmux_vim  &tmux_prev  &del_word     &kp DELETE  &tmux_next  &kp C_VOLUME_UP
+&kp CAPSLOCK  &hml LEFT_SHIFT A  &hml LCTRL S       &hml LEFT_ALT D  &hml LEFT_GUI F  &kp G              &trans  &trans  &kp LEFT   &kp DOWN    &kp UP_ARROW  &kp RIGHT   &kp C_MUTE  &kp C_VOLUME_DOWN
+&trans        &trans             &sr_chj_uppercase  &sr_chj          &sr_ch           &sr_chj_mod_morph                  &trans     &kp C_PREV  &kp C_PP      &kp C_NEXT  &trans      &trans
+                                                    &trans           &trans           &trans                             &trans     &trans      &trans
+            >;
+
+            label = "RSD";
+        };
+
+        combined {
+            bindings = <
+&kp ESCAPE    &kp F1   &kp F2   &kp F3  &kp F4        &kp F5        &trans  &trans  &rgb_ug RGB_TOG  &rgb_ug RGB_EFF  &rgb_ug RGB_EFR  &rgb_ug RGB_BRD  &rgb_ug RGB_BRI                  &bl BL_TOG
+&kp CAPSLOCK  &kp F6   &kp F7   &kp F8  &kp F9        &kp F10       &trans  &trans  &bt BT_CLR_ALL   &rgb_ug RGB_HUD  &rgb_ug RGB_HUI  &rgb_ug RGB_SPD  &kp LEFT_SHIFT                   &rgb_ug RGB_SPI
+&sys_reset    &kp F11  &kp F12  &trans  &bt BT_SEL 0  &bt BT_SEL 1                  &trans           &rgb_ug RGB_SAD  &rgb_ug RGB_SAI  &none            &rgb_ug RGB_COLOR_HSB(0,100,52)  &rgb_ug RGB_COLOR_HSB(0,0,100)
+                                &trans  &trans        &trans                        &trans           &trans           &trans
+            >;
+
+            label = "CMBD";
+        };
+    };
+};
