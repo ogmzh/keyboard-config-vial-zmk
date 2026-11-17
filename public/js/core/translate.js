@@ -45,7 +45,7 @@ class Translator {
     this.issues = [];
     this.tapDances = []; this.tdKeys = new Map();
     this.macros = []; this.macroNames = []; this.macroIdx = new Map();
-    this.overrides = []; this.overrideKeys = new Map();
+    this.overrides = []; this.overrideKeys = new Map(); this.morphMacros = new Map();
     this.features = { bluetooth: false, backlight: false, rgb: true, mouse: true, ...(target.features || {}) };
     this.cap = { macros: 16, tapDance: 32, combos: 32, keyOverrides: 32, ...(target.capacity || {}) };
     this.layerCtx = 0;
@@ -226,6 +226,8 @@ class Translator {
     const BIT = { MOD_LCTL: 1, MOD_LSFT: 2, MOD_LALT: 4, MOD_LGUI: 8, MOD_RCTL: 16, MOD_RSFT: 32, MOD_RALT: 64, MOD_RGUI: 128 };
     let mask = 0; for (const m of mods) mask |= BIT[m] || 0;
     const plain = (c) => c > 1 && c <= 0x1FFF;
+    const isMacro = (c) => c >= QK.MACRO && c < QK.MACRO + this.macros.length;
+    if (mask && isMacro(normal.code) && isMacro(morphed.code)) return this.macroMorph(info, normal.code, morphed.code, mask);
     if (!mask || !plain(normal.code) || !plain(morphed.code) || morphed.status === 'unsupported') {
       return approx(normal.code, `Mod-morph "${info.name}" cannot be expressed in Vial; the key always sends ${this.name(normal.code)}`);
     }
@@ -238,6 +240,29 @@ class Translator {
       this.overrideKeys.set(key, entry); this.overrides.push(entry);
     } else return approx(normal.code, 'No room for another key override');
     return { code: normal.code, status: 'ok', note: `Key override: with the modifier held it sends ${this.name(morphed.code)}` };
+  }
+
+  // A mod-morph between two macros. Stock Vial firmware cannot pick a macro by modifier: it sends a macro key
+  // before it looks at key overrides, so an entry with a macro as its trigger does nothing there. The vial_custom
+  // firmware (see README) reads that same entry when the macro key goes down, and runs the second macro with the
+  // modifiers held back. The key gets a macro of its own, a copy of the first one, so that the rule does not
+  // reach other keys that run the first macro. On stock firmware the copy is all that runs.
+  macroMorph(info, first, second, mask) {
+    const stock = `the key always runs "${this.macroNames[first - QK.MACRO]}"`;
+    let own = this.morphMacros.get(info.name);
+    if (!own) {
+      if (this.macros.length >= this.cap.macros) return approx(first, `Mod-morph "${info.name}": no room for another macro; ${stock}`);
+      if (this.overrides.length >= this.cap.keyOverrides) return approx(first, `Mod-morph "${info.name}": no room for another key override; ${stock}`);
+      const code = QK.MACRO + this.macros.length;
+      this.macros.push(this.macros[first - QK.MACRO].map((action) => [...action]));
+      this.macroNames.push(info.name);
+      const entry = { trigger: this.name(code), replacement: this.name(second), layers: 0, trigger_mods: mask, negative_mod_mask: 0, suppressed_mods: mask, options: 0x87 };
+      this.overrides.push(entry);
+      own = { code, entry };
+      this.morphMacros.set(info.name, own);
+    }
+    own.entry.layers |= 1 << this.layerCtx;
+    return approx(own.code, `With the modifier held it runs "${this.macroNames[second - QK.MACRO]}" (${this.name(second)}), on the vial_custom firmware only; on stock firmware ${stock}`);
   }
 
   // ---------- macros ----------
@@ -274,6 +299,10 @@ class Translator {
       const r = this.binding(s, 1);
       if (r.status === 'unsupported') { notes.push(r.note || `&${s.behavior} skipped`); continue; }
       if (r.note && r.status === 'approx') notes.push(r.note);
+      // The firmware sends plain keys straight to the computer, but runs every other key of a macro as a key
+      // press of its own (vial_keycode_down). When the macro key was waiting behind a hold-tap key, that inner
+      // key press starts the waiting macro key again, and so on without end. Read from the firmware source.
+      if (r.code > 0x1FFF) notes.push(`it presses ${this.name(r.code)}, which is not a plain key: pressed right after a hold-tap key, this macro can make the keyboard stop responding until it is unplugged`);
       push(kind, this.name(r.code));
     }
     this.macros[slot.n] = actions;

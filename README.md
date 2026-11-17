@@ -150,37 +150,54 @@ How ZMK things are carried over:
 | macros | Vial macros (`M0`, `M1`, …) |
 | combos | Vial combos, matched by keycode on the combo's first layer |
 | mod-morph between two plain keys | a key override |
+| mod-morph between two macros | a macro of its own and a key override; needs custom firmware (below) |
 | `&rgb_ug` | `RGB_TOG`, `RGB_MOD`, … (fixed colours have no key in Vial) |
 | encoders (`&inc_dec_kp`) | the encoder map |
 | `&bt`, `&out`, backlight | nothing: the key is left empty and listed |
 
 Things to know:
 
+- **A mod-morph between two macros needs custom firmware.** Stock Vial firmware sends a macro key before it
+  looks at key overrides, so it cannot pick a macro by modifier. The app gives such a key a macro of its own (a
+  copy of the first macro) and writes a key override from that macro to the second one. Stock firmware never
+  acts on that entry: the key always runs the first macro. Firmware built with the `vial_custom` keymap (a
+  small handler on top of Keebart's source) reads the entry when the key goes down, and runs the second macro
+  with the modifiers held back; held Shift, sticky Shift and caps word all count. This matters for a letter
+  behind a dead key that must be typed without Shift (ć and Ć on EurKEY). Without that firmware, give the
+  capital its own key. Letters whose dead key already needs Shift (č, š, ž) work with Shift as they are.
+  The firmware file, its source change and a copy of the shipped firmware are in
+  [`mx-pro-firmware/`](mx-pro-firmware/README.md).
+- **Macros should hold plain keys only.** A layer key or any other special key inside a macro is run by the
+  firmware as a key press of its own, and a macro key pressed right after a hold-tap key can then start itself
+  again without end. The app warns about such a macro.
+
 - QMK has one set of tap-hold timings for the whole keyboard. They are taken from the hold-tap you use most
-  and listed under "Tap-hold timings", where you can switch them off one by one.
+  and listed under "Tap-hold timings", where you can switch them off one by one. So a ZMK hold-preferred layer
+  key (`LT1(KC_TAB)`) waits like a home-row mod on stock firmware. The `vial_custom` firmware makes that one
+  exception: a layer-tap key takes its layer as soon as another key is pressed.
 - ZMK's `hold-trigger-key-positions` has no match unless it means "the other hand" (QMK's chordal hold).
 - A key that has no equivalent can be given its own Vial keycode: click it in the Vial view and tick
   "Use a different Vial keycode on this keyboard only". These choices are stored next to the keymap as
   `config/<keyboard>.vial.json` when you save.
 - The app only writes to a keyboard whose Vial id matches the Keebart Corne MX Pro.
 
-To update Keebart's firmware itself (rarely needed): hold Q (left half) or P (right half) while plugging that
-half in, or hold BOOT and tap RESET on the underside. A drive named RPI-RP2 appears. Copy the same `.uf2`
-to each half.
+To change the firmware itself (rarely needed): hold Q (left half) or P (right half) while plugging that
+half in, then write the same `.uf2` to each half with `picotool`. The steps, and what went wrong with a plain
+file copy, are in [`mx-pro-firmware/`](mx-pro-firmware/README.md).
 
 ## What has and has not been tested
 
 Tested here: reading and writing your keymap byte for byte, the translation of every key in it, the `.vil`
 file shape, and the USB writer against a simulated keyboard that follows the firmware source
-(`npm test`, 33 tests). The export was also checked name by name against the list of names Vial's loader accepts.
+(`npm test`, 35 tests). The export was also checked name by name against the list of names Vial's loader accepts.
 The left/right detection was run on the twelve firmware files of your build, and the flash checks against a
 pretend bootloader drive.
 
 Read from a real Corne MX Pro (read requests only): its Vial id, its 16 layers, its two unlock keys and its
 layout definition are the same as the ones the app uses, key position by key position.
 
-Not tested: a write to a real Corne MX Pro. The first write is the real test, which is why the
-app always saves a backup first. Also not tested on the real keyboards: the USB names the Corne Choc Pro
+Done on a real Corne MX Pro: writes over USB, and the `vial_custom` firmware on both halves (the layer keys
+and Shift + ć were tried by hand). Not tested on the real keyboards: the USB names the Corne Choc Pro
 halves announce (taken from the firmware files), and whether Keebart's bootloader offers `CURRENT.UF2`.
 If it does not, the app says it cannot tell which half is on the drive and asks you to check.
 
@@ -196,6 +213,7 @@ public/data/          key tables and the Corne MX Pro definition
 keymaps/bundled/      the copy of your keymap the app starts with
 test/                 tests and the simulated keyboard
 tools/gen-data.mjs    regenerates public/data from the ZMK, vial-gui and Keebart sources
+mx-pro-firmware/      the Corne MX Pro's shipped firmware (backup), the custom firmware and its source change
 settings.json, repos/, firmware/, exports/   created as you use the app
 ```
 

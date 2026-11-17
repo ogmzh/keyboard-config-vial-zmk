@@ -30,16 +30,18 @@ export const code = (text, cls = '') => h('code', { class: 'tok ' + cls }, text)
 let openModals = 0;
 export function modal({ title, body, footer, onClose, canClose, wide = false, cls = '' }) {
   const dialog = h('div', { class: `dialog ${wide ? 'wide' : ''} ${cls}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
-    h('header', { class: 'dialog-head' }, h('h2', null, title), h('button', { class: 'icon-btn', 'aria-label': 'Close', onClick: () => close(null) }, '✕')),
+    h('header', { class: 'dialog-head' }, h('h2', null, title), h('button', { class: 'icon-btn', 'aria-label': 'Close', onClick: () => close(null, 'button') }, '✕')),
     h('div', { class: 'dialog-body' }, body),
     footer ? h('footer', { class: 'dialog-foot' }, footer) : null);
-  const overlay = h('div', { class: 'overlay', onMousedown: (e) => { if (e.target === overlay) close(null); } }, dialog);
+  const overlay = h('div', { class: 'overlay', onMousedown: (e) => { if (e.target === overlay) close(null, 'outside'); } }, dialog);
   const prev = document.activeElement;
-  const onKey = (e) => { if (e.key === 'Escape' && overlay === document.body.lastElementChild) { e.stopPropagation(); close(null); } };
+  // A key that is held down sends Escape over and over; only the first one counts.
+  const onKey = (e) => { if (e.key === 'Escape' && !e.repeat && overlay === document.body.lastElementChild) { e.stopPropagation(); close(null, 'escape'); } };
   let closed = false;
-  function close(result) {
+  // how: 'escape', 'outside' (a click beside the dialog), 'button' (the ✕), or nothing when the page itself closes it
+  function close(result, how) {
     if (closed) return;
-    if (canClose && !canClose()) return;
+    if (canClose && !canClose(how)) return;
     closed = true; openModals--;
     document.removeEventListener('keydown', onKey, true);
     overlay.remove();
