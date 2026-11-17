@@ -13,6 +13,7 @@ export const QSID_WIDTH = { 1: 1, 2: 2, 3: 1, 4: 2, 5: 1, 6: 2, 7: 2, 8: 1, 9: 2
 // How long to wait for one answer. Saving to the keyboard's memory can hold an answer up for a moment.
 const ANSWER_MS = 1500;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const LOCKED = 'The keyboard is locked, and a locked keyboard ignores macros. Nothing was written. Try again, and hold the two keys until the bar is full.';
 
 // Both halves of a split Vial keyboard look exactly the same over USB, so the app keeps a mark on the half
 // itself: one keycode in a matrix position of the last layer that has no switch and so can never be pressed.
@@ -44,6 +45,7 @@ export class WebHidTransport {
     // never mistaken for the answer to the next request. The count is never forgiven: if an answer really
     // was lost, the requests after it fail with "did not answer" and the app stops, which is the safe way out.
     this.owed = 0;
+    this.turn = Promise.resolve();
     this.onReport = (e) => {
       if (this.owed) { this.owed--; return; }
       const w = this.waiter; if (!w) return;
@@ -75,7 +77,16 @@ export class WebHidTransport {
     return WebHidTransport.open(device);
   }
 
+  // One request at a time. A second caller waits its turn, so two parts of the page (or two clicks on the same
+  // button) can never take each other's answers.
   send(msg, timeoutMs = ANSWER_MS) {
+    const run = () => this.sendNow(msg, timeoutMs);
+    const mine = this.turn.then(run, run);
+    this.turn = mine.catch(() => {});
+    return mine;
+  }
+
+  sendNow(msg, timeoutMs) {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.waiter = null; this.owed++; reject(new Error('The keyboard did not answer.')); }, timeoutMs);
       this.waiter = (data) => { clearTimeout(timer); resolve(data); };
@@ -330,6 +341,7 @@ export class VialKeyboard {
       const h = s.keyOverrides[i];
       if (Object.keys(n).some((k) => n[k] !== h[k])) ops.push({ type: 'keyOverride', index: i, entry: n });
     });
+    if (used.keyOverrides > s.keyOverrides.length) notes.push(`The keyboard stores ${s.keyOverrides.length} key overrides; ${used.keyOverrides - s.keyOverrides.length} did not fit.`);
     if (tr.macros.length > s.macroCount) notes.push(`The keyboard stores ${s.macroCount} macros; ${tr.macros.length - s.macroCount} did not fit.`);
     const macroBytes = serializeMacros(vil.macro, s.macroCount, q);
     if (macroBytes.length > s.macroSize) notes.push(`The macros need ${macroBytes.length} bytes but the keyboard has ${s.macroSize}. Macros are left as they are.`);
@@ -370,7 +382,10 @@ export class VialKeyboard {
 
   async apply(plan, onProgress = () => {}) {
     let done = 0;
-    for (const op of plan.ops) {
+    // Macros go first. While the keyboard is locked the firmware ignores a macro write and answers as if all
+    // were well, so that is checked here, before any key has been pointed at a macro that is not there.
+    const ops = [...plan.ops].sort((a, b) => (b.type === 'macros') - (a.type === 'macros'));
+    for (const op of ops) {
       switch (op.type) {
         case 'key': await this.cmd([0x05, op.layer, op.row, op.col, op.code >> 8, op.code & 0xFF]); break;
         case 'encoder': await this.cmd([VIAL, 0x04, op.layer, op.index, op.dir, op.code >> 8, op.code & 0xFF]); break;
@@ -388,7 +403,10 @@ export class VialKeyboard {
           // them, switch them on. A write that is cut short leaves them off, never half-written and live.
           const last = op.size ? op.size - 1 : -1;
           const guard = async (v) => { if (last >= 0) await this.cmd([0x0F, last >> 8, last & 0xFF, 1, v]); };
+          if (!(await this.unlockStatus()).unlocked) throw new Error(LOCKED);
           await guard(0xFF);
+          // the proof that the keyboard takes macro writes right now: the byte just written reads back
+          if (last >= 0 && (await this.cmd([0x0E, last >> 8, last & 0xFF, 1]))[4] !== 0xFF) throw new Error(LOCKED);
           try {
             for (let off = 0; off < op.bytes.length; off += CHUNK) {
               const chunk = op.bytes.slice(off, off + CHUNK);
@@ -409,7 +427,7 @@ export class VialKeyboard {
         }
         default: throw new Error('Unknown operation ' + op.type);
       }
-      onProgress(++done / plan.ops.length);
+      onProgress(++done / ops.length);
     }
   }
 }

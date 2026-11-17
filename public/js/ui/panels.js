@@ -279,7 +279,7 @@ export function vialPanel(app) {
 function usbWizard(app) {
   const t = app.vialTarget;
   const body = h('div', { class: 'usb' });
-  let kb = null; let transport = null; let cancelled = false; let unlocking = false; let writing = false;
+  let kb = null; let transport = null; let cancelled = false; let unlocking = false; let writing = false; let busy = false;
   // the top-bar check must not talk to the keyboard while this dialog does
   const quiet = app.watch.pause();
   const say = (...c) => body.replaceChildren(...c.filter((x) => x !== null && x !== undefined && x !== false));
@@ -298,7 +298,11 @@ function usbWizard(app) {
       'The keymap is stored in the half the USB cable is in. If you sometimes plug the cable into the other half, write to that one as well.');
   };
   // Escape or a click beside the dialog must not cut a write off half-way: the keyboard would be left with a mix
-  const canClose = () => { if (writing) toast('Still writing to the keyboard. This takes a few seconds.', 'info'); return !writing; };
+  // The same goes for the unlock: the two keys that are held for it still type, and one of them can be Escape.
+  const canClose = (how) => {
+    if (writing) { if (how !== 'escape') toast('Still writing to the keyboard. This takes a few seconds.', 'info'); return false; }
+    return !(unlocking && !cancelled && how === 'escape');
+  };
   const m = modal({ title: `Write to the ${t.name}`, body, onClose: finish, canClose, cls: 'usb-dialog' });
   const fail = (e) => say(h('p', { class: 'warn-text' }, e.message || String(e)), h('div', { class: 'btn-row' }, h('button', { onClick: () => m.close() }, 'Close')));
 
@@ -337,21 +341,26 @@ function usbWizard(app) {
       h('table', { class: 'settings' }, rows.map(([k, n]) => h('tr', null, h('td', null, k), h('td', { class: 'tok' }, typeof n === 'number' ? `${n} to change` : n)))),
       plan.notes.length ? h('ul', { class: 'row-issues' }, plan.notes.map((n) => h('li', { class: 'lv-warn' }, n))) : null,
       plan.needsUnlock ? h('p', { class: 'muted small' }, 'Macros can only be changed while the keyboard is unlocked. You will be asked to hold two keys.') : null,
-      h('div', { class: 'btn-row' }, h('button', { onClick: () => m.close() }, 'Cancel'), h('button', { class: 'primary', onClick: () => write(plan, state).catch(fail) }, `Write ${plan.ops.length} change${plan.ops.length > 1 ? 's' : ''}`)));
+      h('div', { class: 'btn-row' }, h('button', { onClick: () => m.close() }, 'Cancel'), h('button', { class: 'primary', onClick: () => write(plan).catch(fail) }, `Write ${plan.ops.length} change${plan.ops.length > 1 ? 's' : ''}`)));
   };
 
   // Locks the keyboard again and checks that it took.
   const relock = async () => { try { await kb.lock(); return !(await kb.unlockStatus()).unlocked; } catch { return false; } };
 
-  const write = async (plan, state) => {
+  const write = async (plan) => {
+    if (busy) return;   // a second click on the button
+    busy = true;
     let after = null; let left = null; let locked = true;
     try {
-      if (plan.needsUnlock && !state.unlocked) {
-        const st = await kb.unlockStatus();
+      // Asked now, not taken from the earlier read: macros can only be written while the keyboard is unlocked.
+      const st = plan.needsUnlock ? await kb.unlockStatus() : null;
+      if (st && !st.unlocked) {
+        if (document.activeElement && document.activeElement.blur) document.activeElement.blur();   // the held keys must not press a button
         const idx = new Set(st.keys.map(([r, c]) => t.positions.findIndex(([pr, pc]) => pr === r && pc === c)));
         const caps = app.km.layout.map((_, i) => ({ kind: idx.has(i) ? 'alpha' : 'ghost', selected: idx.has(i), main: idx.has(i) ? 'hold' : '' }));
         const bar = h('progress', { value: 0, max: 1 });
         say(h('p', null, 'Press and hold the two highlighted keys until the bar fills.'), h('div', { class: 'mat vial' }, keyboardView({ layout: app.km.layout, caps, interactive: false, maxUnit: 30 })), bar,
+          h('p', { class: 'muted small' }, 'The two keys still type while you hold them. That does no harm here.'),
           h('div', { class: 'btn-row' }, h('button', { onClick: () => { cancelled = true; m.close(); } }, 'Cancel')));
         unlocking = true;
         const okUnlock = await kb.unlock({ onProgress: (f) => { bar.value = f; }, shouldCancel: () => cancelled });
@@ -370,13 +379,13 @@ function usbWizard(app) {
       // After a cancelled unlock there is nothing to lock, and the keyboard is already closed.
       if (plan.needsUnlock && !cancelled) locked = await relock();
       if (after) after.unlocked = !locked;
-      writing = false;
+      writing = false; unlocking = false; busy = false;
       if (!locked) toast('The app could not lock the keyboard again. Unplug it and plug it back in; that locks it.', 'error', 12000);
     }
     if (left.ops.length) {
       say(h('p', { class: 'warn-text' }, `${left.ops.length} change${left.ops.length > 1 ? 's' : ''} did not stick (${[...new Set(left.ops.map((o) => o.type))].join(', ')}).`),
         h('p', { class: 'muted' }, 'Everything else was written. You can try again, or load the .vil file in Vial instead.'),
-        h('div', { class: 'btn-row' }, h('button', { onClick: () => m.close() }, 'Close'), h('button', { class: 'primary', onClick: () => write(left, after).catch(fail) }, 'Try again')));
+        h('div', { class: 'btn-row' }, h('button', { onClick: () => m.close() }, 'Close'), h('button', { class: 'primary', onClick: () => write(left).catch(fail) }, 'Try again')));
       return;
     }
     say(h('p', { class: 'ok-text' }, `Done. ${plan.ops.length} change${plan.ops.length > 1 ? 's' : ''} written and checked.`), h('p', { class: 'muted' }, 'The new keymap is active right away. No flashing needed.'),

@@ -44,7 +44,7 @@ test('your keymap translates as expected', () => {
   assert.equal(L0[40], 'TD(0)');                     // &oneshot_or_tab TAB LSHIFT
   assert.deepEqual(t.tapDance[0], ['OSM(MOD_LSFT)', 'KC_TAB', 'KC_NO', 'KC_NO', 180]);
   assert.deepEqual(t.combos, [['LT1(KC_TAB)', 'LT2(KC_ENTER)', 'KC_NO', 'KC_NO', 'MO(3)'], ['KC_H', 'KC_G', 'KC_NO', 'KC_NO', 'QK_CAPS_WORD_TOGGLE']]);
-  assert.equal(t.macros.length, 11);
+  assert.equal(t.macros.length, 12);                  // 11 in the file, and one for the mod-morph between two macros
   assert.deepEqual(t.macros[t.macroNames.indexOf('tmux_vim')], [['tap', 'LCTL(KC_A)', 'KC_LBRACKET']]);
   assert.equal(t.keys[3][28].name, 'QK_REBOOT');
   assert.equal(t.keys[3][22].status, 'unsupported');  // &bt BT_CLR_ALL
@@ -52,6 +52,37 @@ test('your keymap translates as expected', () => {
   assert.equal(t.settings[7], 200);
   assert.equal(t.settings[27], 60);
   assert.equal(t.settings[26], undefined);            // same-hand positional rule is not QMK's chordal hold
+});
+
+test('a mod-morph between two macros gets a macro of its own and a key override for the custom firmware', () => {
+  const t = tr();
+  const n = (name) => t.macroNames.indexOf(name);
+  assert.deepEqual([n('sr_chj'), n('sr_chj_uppercase'), n('sr_chj_mod_morph')], [2, 5, 11]);   // the file's macros keep their numbers
+  assert.deepEqual(t.macros[11], t.macros[2]);
+  assert.notEqual(t.macros[11], t.macros[2]);          // a copy, not the same list
+  assert.deepEqual(t.keyOverrides, [{ trigger: 'M11', replacement: 'M5', layers: 1 << 2, trigger_mods: 0x22, negative_mod_mask: 0, suppressed_mods: 0x22, options: 0x87 }]);
+  const key = t.keys[2][33];                           // &sr_chj_mod_morph
+  assert.equal(key.name, 'M11');
+  assert.equal(key.status, 'approx');
+  assert.match(key.note, /"sr_chj_uppercase" \(M5\).*vial_custom.*stock firmware the key always runs "sr_chj"/);
+  assert.equal(t.keys[2][31].name, 'M2');              // &sr_chj on its own key is not part of the rule
+  assert.equal(t.keys[2][30].name, 'M5');
+
+  // the same mod-morph on a second layer: still one macro and one entry, for both layers
+  const twoKeys = text.replace('&kp C_PP ', '&sr_chj_mod_morph ').replace('&kp LS(LG(X))', '&sr_chj_mod_morph');
+  const t2 = translate(new Keymap(twoKeys, info.layouts.default_layout.layout, info.sensors), zk, qmk, target, {});
+  const where = t2.keys.flatMap((layer, li) => layer.map((k, pos) => (k.name === 'M11' ? `${li}:${pos}` : null)).filter(Boolean));
+  assert.deepEqual(where, ['0:6', '2:33', '2:36']);   // layer 0 once, layer 2 twice
+  assert.equal(t2.macros.length, 12);
+  assert.equal(t2.keyOverrides.length, 1);
+  assert.equal(t2.keyOverrides[0].layers, (1 << 0) | (1 << 2));
+
+  // no free macro: the key stays on the first macro, and nothing is written for it
+  const full = translate(load(), zk, qmk, { ...target, capacity: { ...target.capacity, macros: 11 } }, {});
+  assert.equal(full.keys[2][33].name, 'M2');
+  assert.match(full.keys[2][33].note, /no room for another macro/);
+  assert.equal(full.macros.length, 11);
+  assert.deepEqual(full.keyOverrides, []);
 });
 
 test('overrides replace a key for the Vial board only', () => {
@@ -137,10 +168,14 @@ test('every name in the export is one Vial\'s own loader accepts', () => {
 test('macros survive the trip to bytes and back', () => {
   const t = tr();
   const bytes = serializeMacros(t.macros, 16, qmk);
-  assert.deepEqual(deserializeMacros(bytes, 16, qmk).slice(0, 11), t.macros);
+  assert.deepEqual(deserializeMacros(bytes, 16, qmk).slice(0, t.macros.length), t.macros);
   // 2-byte keycode with a zero low byte uses the 0xFF escape
   assert.deepEqual([...serializeMacros([[['tap', 'KC_A', 'LSFT(KC_B)'], ['delay', 300], ['down', '0x5200']]], 1, qmk)], [1, 1, 4, 1, 5, 5, 2, 1, 4, 46, 2, 1, 6, 0x52, 0xFF, 0]);
 });
+
+// a request that changes nothing on the keyboard
+const isRead = (m) => [0x01, 0x02, 0x04, 0x0C, 0x0D, 0x0E, 0x11, 0x12].includes(m[0])
+  || (m[0] === 0xFE && ([0x00, 0x03, 0x05, 0x09, 0x0A].includes(m[1]) || (m[1] === 0x0D && [0, 1, 3, 5, 7].includes(m[2]))));
 
 test('writing to a (mock) keyboard: backup, unlock, write, verify', async () => {
   const dev = new MockVial();
@@ -162,18 +197,21 @@ test('writing to a (mock) keyboard: backup, unlock, write, verify', async () => 
   assert.ok(plan.summary.keys > 100);
   assert.equal(plan.summary.macros, 1);
 
-  // locked: macro writes are ignored by the firmware, and a second plan shows it
-  await kb.apply(plan);
+  // locked: the firmware would ignore the macros and answer as if all were well. The write stops before it
+  // changes anything, so no key is left pointing at a macro that was never stored.
+  const sent = dev.log.length;
+  await assert.rejects(kb.apply(plan), /locked/);
+  assert.ok(dev.log.slice(sent).every(isRead), 'nothing but questions was sent');
   let after = await kb.readState(target);
-  let again = kb.plan(t, after, target);
-  assert.deepEqual(again.ops.map((o) => o.type), ['macros']);
+  assert.deepEqual(after.keymap, before.keymap);
+  assert.deepEqual(after.macroBytes, before.macroBytes);
 
-  // unlock (the mock "holds" the keys), then the rest goes through
+  // unlock (the mock "holds" the keys), then everything goes through
   dev.holding = true;
   assert.equal(await kb.unlock({ pollMs: 1 }), true);
-  await kb.apply(again);
+  await kb.apply(plan);
   after = await kb.readState(target);
-  again = kb.plan(t, after, target);
+  const again = kb.plan(t, after, target);
   assert.equal(again.ops.length, 0);
   assert.equal(after.keymap[0][0][6], 0x0A1B);
   assert.equal(after.keymap[0][4][6], 0x7C73);
@@ -181,10 +219,37 @@ test('writing to a (mock) keyboard: backup, unlock, write, verify', async () => 
   assert.deepEqual(after.tapDance[0], [0x52A2, 0x2B, 0, 0, 180]);
   assert.deepEqual(after.combos[1], [0x0B, 0x0A, 0, 0, 0x7C73]);
   assert.equal(after.settings[25], 80);
-  assert.deepEqual(kb.stateToVil(after, target).macro.slice(0, 11), t.macros);
+  assert.deepEqual(kb.stateToVil(after, target).macro.slice(0, t.macros.length), t.macros);
+  // the mod-morph between two macros: a key override from its own macro (M11) to the capital's macro (M5)
+  assert.deepEqual(after.keyOverrides[0], { trigger: 0x770B, replacement: 0x7705, layers: 4, trigger_mods: 0x22, negative_mod_mask: 0, suppressed_mods: 0x22, options: 0x87 });
   // layers the keymap does not use are untouched
   assert.ok(after.keymap.slice(4).every((l) => l.every((r) => r.every((c) => c === 0))));
   await kb.lock();
+});
+
+test('a keyboard that says it is unlocked but does not take macros is caught by the first byte written', async () => {
+  const dev = new MockVial();
+  const kb = new VialKeyboard(dev, qmk);
+  const before = await kb.readState(target);
+  const plan = kb.plan(tr(), before, target);
+  const real = dev.send.bind(dev);
+  dev.send = async (msg) => { const d = await real(msg); if (msg[0] === 0xFE && msg[1] === 0x05) d[0] = 1; return d; };
+  const sent = dev.log.length;
+  await assert.rejects(kb.apply(plan), /locked/);
+  dev.send = real;
+  // the one write that went out is the macro switch-off byte, which the keyboard ignored; no key was touched
+  assert.deepEqual(dev.log.slice(sent).filter((m) => !isRead(m)).map((m) => [...m.slice(0, 5)]), [[0x0F, (before.macroSize - 1) >> 8, (before.macroSize - 1) & 0xFF, 1, 0xFF]]);
+  const after = await kb.readState(target);
+  assert.deepEqual(after.keymap, before.keymap);
+  assert.equal(after.macrosOff, false);
+});
+
+test('a macro that holds a key which is not a plain key gets a warning', () => {
+  const src = text.replace('<&kp LSHFT &kp RSHFT>,', '<&kp LSHFT &kp RSHFT &mo 1>,');
+  assert.notEqual(src, text);
+  const t = translate(new Keymap(src, info.layouts.default_layout.layout, info.sensors), zk, qmk, target, {});
+  assert.ok(t.issues.some((i) => /sr_chj_uppercase/.test(i.text || i.message || JSON.stringify(i)) && /stop responding/.test(JSON.stringify(i))));
+  assert.ok(!tr().issues.some((i) => /stop responding/.test(JSON.stringify(i))), 'the macros of the bundled keymap are all plain keys');
 });
 
 test('macros are switched off while they are written, and a write cut short leaves them off', async () => {
